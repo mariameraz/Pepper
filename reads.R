@@ -37,8 +37,6 @@ df <-  cbind(df,
                                                     -Length, starts_with('out')) %>%
                     column_to_rownames('Geneid'))
 }
-# Backup 
-df2 <- df
 
 # How many samples do not have any read?
 table(colSums(df) == 0) 
@@ -55,67 +53,60 @@ ggplot(samples_size, aes(x=size)) +
 summary(colSums(df))
 table(colSums(df) < 100000) # Keep in mind that we have libraries with very few reads
 
-
-# Changing the sample names
+# Changing the sample names - Removing the 'out.' from the begging
 colnames(df) <- gsub('^out\\.([S|D]RR.*[0-9])\\..*$', '\\1', colnames(df))
+colnames(df)
 
-df_tomato <- df
+# Backup
+df_pepper <- df
 
-dim(df_tomato) #130 samples
+dim(df_pepper) # 950 samples
 
 ##################################
 ## Create METADATA table pepper ##
 #################################
 
-metadata.list <- list.files('~/counts/pepper/metadata/')
-metadata <- data.frame() #empty data frame
+# Define the columns we want to keep in metadata
+columns_to_select <- c("Run", 
+                       "LibraryName", 
+                       "BioProject", 
+                       "ScientificName", 
+                       "avgLength", 
+                       "LibraryStrategy", 
+                       "Platform", 
+                       "Sample", 
+                       "LibraryLayout", 
+                       "LibrarySelection")
+
+# Initialize an empty data frame with the correct structure
+metadata <- data.frame(matrix(ncol = length(columns_to_select), nrow = 0))
+colnames(metadata) <- columns_to_select
+
+metadata.list <- list.files('/Users/alejandra/pepper_counts/metadata/')
 
 for (i in metadata.list) {
+  temp <- read.csv(paste('/Users/alejandra/pepper_counts/metadata/', i, sep = ''), header = TRUE, fill = TRUE)
   
-  temp <- read.csv(paste('~/counts/pepper/metadata/',i, sep = '/'), header = T, fill = T) %>% 
-    select(Run, 
-           LibraryName,
-           BioProject, 
-           ScientificName,
-           avgLength, 
-           LibraryStrategy, 
-           Platform, 
-           Sample, 
-           LibraryLayout,
-           LibrarySelection)
+  # Check which of the columns are available in the current data frame
+  available_columns <- columns_to_select[columns_to_select %in% colnames(temp)]
+  
+  # Select only the available columns
+  temp <- temp %>% select(all_of(available_columns))
+  
+  # Add missing columns with NA values
+  missing_columns <- setdiff(columns_to_select, available_columns)
+  if (length(missing_columns) > 0) {
+    temp[missing_columns] <- NA
+  }
+  
+  # Ensure the columns are in the correct order
+  temp <- temp %>% select(all_of(columns_to_select))
+  
+  # Bind the rows to the metadata data frame
   metadata <- rbind(metadata, temp)
 }
-dim(metadata) #881 samples 
-colnames(metadata)
 
-View(metadata)
-
-##################################
-## Create METADATA table tomato ##
-##################################
-
-metadata.list <- list.files('~/counts/tomato/metadata/')
-metadata <- data.frame() #empty data frame
-
-for (i in metadata.list) {
-  
-  temp <- read.csv(paste('~/counts/tomato/metadata/',i, sep = '/'), header = T, fill = T) %>% 
-    select(Run, 
-           LibraryName,
-           BioProject, 
-           ScientificName,
-           avgLength, 
-           LibraryStrategy, 
-           Platform, 
-           Sample, 
-           LibraryLayout,
-           LibrarySelection)
-  metadata <- rbind(metadata, temp)
-}
-dim(metadata) #881 samples 
-colnames(metadata)
-
-View(metadata)
+head(metadata)
 
 # FILTER RNA-Seq data!!
 metadata$LibraryStrategy %>% table
