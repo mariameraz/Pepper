@@ -6,13 +6,14 @@ library(factoextra)
 library(ggfortify)
 
 # Set working directory
-setwd('~/counts/')
+setwd('/Users/alejandra/pepper_counts/counts')
 
 #######################################
 # Merge count tables in a single one #
 #####################################
-setwd('~/counts/pepper/')
+
 list <- list.files(pattern = '.txt$')
+length(list)
 
 # Create a base table
 df <- read.table('counts.11441.txt', header = T) %>%
@@ -36,41 +37,24 @@ df <-  cbind(df,
                                                     -Length, starts_with('out')) %>%
                     column_to_rownames('Geneid'))
 }
+# Backup 
+df2 <- df
 
-# Changing the sample names
-colnames(df) <- gsub('^out\\.([S|D]RR.*[0-9])\\..*$', '\\1', colnames(df))
+# How many samples do not have any read?
+table(colSums(df) == 0) 
+df <- df[,!(colSums(df) == 0)] 
+
+samples_size <- colSums(df) %>% as.data.frame() %>% rownames_to_column('id') 
+colnames(samples_size) <- c('id','size')
+
+ggplot(samples_size, aes(x=size)) +
+  geom_density() +
+  geom_vline(xintercept=1000000, color="red", linetype="dashed", size=1) 
 
 
-df_pepper <- df
+summary(colSums(df))
+table(colSums(df) < 100000) # Keep in mind that we have libraries with very few reads
 
-dim(df_pepper) #779 samples
-
-## PASTE ALL THE COUNTS IN A SINGLE COUNT MATRIX FOR TOMATO ##
-setwd('~/counts/tomato/')
-list <- list.files(pattern = '.txt$')
-
-# Create a base table
-df <- read.table('counts.213528.txt', header = T) %>%
-  dplyr::select(Geneid,
-                -Chr, 
-                -Start,
-                -End,
-                -Strand,
-                -Length, 
-                -c(starts_with('out'))) %>% column_to_rownames('Geneid')
-
-## PASTE ALL THE COUNTS IN A SINGLE COUNT MATRIX FOR PEPPER ##
-for (i in list) {
-  df <-  cbind(df, 
-               read.table(i, header = T) %>%
-                 dplyr::select(Geneid,
-                               -Chr, 
-                               -Start,
-                               -End,
-                               -Strand,
-                               -Length, starts_with('out')) %>%
-                 column_to_rownames('Geneid'))
-}
 
 # Changing the sample names
 colnames(df) <- gsub('^out\\.([S|D]RR.*[0-9])\\..*$', '\\1', colnames(df))
