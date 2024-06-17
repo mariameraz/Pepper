@@ -16,3 +16,14 @@ do
 hisat2 -p 8 --dta -q $INDEX_PATH/pepper.idx -U ${i}_1.fastq -S ${i}.sam
 
 done
+
+for i in $(ls out* | sed 's/.sam//g')
+do
+
+#sam to bam file
+samtools view -bS ${i}.sam > ${i}.bam
+
+#sorting bam files
+samtools sort ${i}.bam -o ${i}.sorted.bam
+
+done
