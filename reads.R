@@ -4,6 +4,7 @@ library(edgeR)
 library(corrr)
 library(factoextra)
 library(ggfortify)
+library(patchwork)
 
 # Set working directory
 setwd('/Users/alejandra/pepper_counts/counts')
@@ -12,7 +13,7 @@ setwd('/Users/alejandra/pepper_counts/counts')
 # Merge count tables in a single one #
 #####################################
 
-list <- list.files(pattern = '.txt$')
+list <- list.files(pattern = '^counts.*')
 length(list)
 
 # Create a base table
@@ -38,104 +39,101 @@ df <-  cbind(df,
                     column_to_rownames('Geneid'))
 }
 
-# How many samples do not have any read?
-table(colSums(df) == 0) 
-df <- df[,!(colSums(df) == 0)] 
+dim(df) # 35845 genes, 1766 samples
 
-samples_size <- colSums(df) %>% as.data.frame() %>% rownames_to_column('id') 
-colnames(samples_size) <- c('id','size')
-
-ggplot(samples_size, aes(x=size)) +
-  geom_density() +
-  geom_vline(xintercept=1000000, color="red", linetype="dashed", size=1) 
-
-
-summary(colSums(df))
-table(colSums(df) < 100000) # Keep in mind that we have libraries with very few reads
 
 # Changing the sample names - Removing the 'out.' from the begging
-colnames(df) <- gsub('^out\\.([S|D]RR.*[0-9])\\..*$', '\\1', colnames(df))
-colnames(df)
+colnames(df) <- gsub('^out\\.([S|D|E]RR.*[0-9])\\..*$', '\\1', colnames(df))
+colnames(df) <- gsub('(^.*)\\.1','\\1',colnames(df))
+
+# Check duplicated columns
+colnames(df)[duplicated(colnames(df))] %>% length()
+
+# Eliminar columnas duplicadas, manteniendo la primera aparición
+df <- df[ , !duplicated(colnames(df))]
+dim(df)
+
+# Save Samples ID
+samples <- colnames(df) %>% as.data.frame() 
+write.csv(samples,'muestras_descargadas.csv', row.names = F)
+
+
+# How many samples do not have any read?
+head(df)
+#df <- as.matrix(df)
+summary(colSums(df))
+table(colSums(df) > 1000000) # Keep in mind that we have libraries with very few reads
+
+# Filtrar las columnas cuya suma sea mayor a 100000
+df[, colSums(df) > 1000000] #81 FALSE
+df <- df[, colSums(df) > 1000000] #81 FALSE
+dim(df) #1470
+
+summary(colSums(df))
+
+# Filtrar las columnas cuya suma sea mayor a 100000
+filtered_sums <- colSums(df)
+# Crear un dataframe adecuado para el gráfico
+data_to_plot <- data.frame(Sum = filtered_sums)
+
+# Agrupar las columnas en rangos de suma
+data_to_plot <- data_to_plot %>%
+  mutate(Range = cut(Sum, breaks = seq(1000000, max(Sum), by = 1000000)))
+
+# Convertir los valores de Value a millones
+data_to_plot
+
+boxplot <- 
+  ggplot(data_to_plot, aes(y = Sum)) +
+  geom_boxplot() +
+  ylab("Library Size") +
+  coord_flip() +
+  theme_classic() 
+
+density <-
+  ggplot(data_to_plot, aes(y = Sum)) +
+  geom_density() +
+  ylab("Library Size") +
+  theme_classic() +
+  coord_flip() 
+
+
+boxplot + density + plot_layout(ncol = 1)
+  
 
 # Backup
 df_pepper <- df
 
-dim(df_pepper) # 950 samples
 
 ##################################
-## Create METADATA table pepper ##
+## Load METADATA table pepper ##
 #################################
 
-# Define the columns we want to keep in metadata
-columns_to_select <- c("Run", 
-                       "LibraryName", 
-                       "BioProject", 
-                       "ScientificName", 
-                       "avgLength", 
-                       "LibraryStrategy", 
-                       "Platform", 
-                       "Sample", 
-                       "LibraryLayout", 
-                       "LibrarySelection")
+## ---> ARREGLAR AQUI!!
 
-# Initialize an empty data frame with the correct structure
-metadata <- data.frame(matrix(ncol = length(columns_to_select), nrow = 0))
-colnames(metadata) <- columns_to_select
+metadata <- read.csv('/Users/alejandra/pepper_counts/metadata/metadata_clean.csv')
 
-metadata.list <- list.files('/Users/alejandra/pepper_counts/metadata/')
+df[!(colnames(df) %in% metadata$Run)] %>% colnames %>% as.data.frame %>% View
 
-for (i in metadata.list) {
-  temp <- read.csv(paste('/Users/alejandra/pepper_counts/metadata/', i, sep = ''), header = TRUE, fill = TRUE)
-  
-  # Check which of the columns are available in the current data frame
-  available_columns <- columns_to_select[columns_to_select %in% colnames(temp)]
-  
-  # Select only the available columns
-  temp <- temp %>% select(all_of(available_columns))
-  
-  # Add missing columns with NA values
-  missing_columns <- setdiff(columns_to_select, available_columns)
-  if (length(missing_columns) > 0) {
-    temp[missing_columns] <- NA
-  }
-  
-  # Ensure the columns are in the correct order
-  temp <- temp %>% select(all_of(columns_to_select))
-  
-  # Bind the rows to the metadata data frame
-  metadata <- rbind(metadata, temp)
-}
 
-head(metadata)
 
-# FILTER RNA-Seq data!!
-metadata$LibraryStrategy %>% table
-metadata <- metadata %>% filter(metadata$LibraryStrategy == 'RNA-Seq')
 
-#EXPLORE THE DATA
-metadata$Platform %>% table # ALL is illumina
-metadata$BioProject %>% table %>% length() #31 projects
-metadata$ScientificName %>% table 
-metadata$LibraryLayout %>% table
-metadata$LibrarySelection %>% table
-metadata$avgLength %>% summary()
+df <- df[colnames(df) %in% metadata$Run]  # Which are not in the metadata? 
+
 
 ########################################################
 # Check that all the samples in df and metadata match #
 ######################################################
 
-df <- df[,!(colnames(df) %>% table >= 2)] 
 
-df[!(colnames(df) %in% metadata$Run)]  %>% colnames()
-df <- df[!(grepl('\\.1', colnames(df)))]
-dim(df) #619
 
-metadata$Run %in% colnames(df) %>% table #695 TRUE 
-metadf <- metadata
+colnames(df) %in% metadata$Run %>% table
+metadata$Run %in% colnames(df) %>% table #747 TRUE 
+metadata_backup <- metadata
 metadata <- metadata %>% filter(metadata$Run %in% colnames(df)) 
 
 # ARE THE SAME SAMPLES ???
-nrow(metadata[1:561,]) == ncol(df) #MUST BE TRUE <<<<<
+nrow(metadata) == ncol(df) #MUST BE TRUE <<<<<
 
 ################################################################################
 # Normalization
@@ -145,20 +143,23 @@ nrow(metadata[1:561,]) == ncol(df) #MUST BE TRUE <<<<<
 ########################
 
 # Filter libraries with less than 1 M reads
-table(apply(df, 2, sum) > 1000000) #628
-df <- df[,apply(df, 2, sum) > 1000000]
-
-
 d <- DGEList(counts = df)
 norm.counts <- cpm(d, normalized.lib.sizes = T, log = F)
 
 ## OMITTING GENES THAT CPM < 1 IN ALL SAMPLES
-table(rowSums(norm.counts > 1) == 0) #7394
+table(rowSums(norm.counts > 1) == 0) #4107
 norm.counts.filt <- norm.counts[rowSums(norm.counts > 1) != 0, ]
 variances <- apply(norm.counts.filt, 1, var)
-variances<- round(variances, digits = 1)
+variances <- round(variances, digits = 2)
 
-table(variances == 0) #2066 genes with variance 0 
+(variances == 0) %>% table
+
+temp <- norm.counts[variances == 0,] 
+View(temp)
+
+
+
+# Clean this section of the code <--------------
 
 #################
 # Create a PCA #
@@ -192,20 +193,20 @@ pc_scores <- pca$x
 pc_scores <- pc_scores %>% 
   # convert to a tibble retaining the sample names as a new column
   as_tibble(rownames = "sample") 
+min(pc_scores_2$PC1)
+pc_scores_2 %>% filter(PC1 < -500) %>% select(sample, PC1)
+#metadata <- read.csv('metadata.csv', header = T) 
+#dim(metadata)
 
-
-metadata <- read.csv('metadata.csv', header = T) 
-dim(metadata)
-
-
-pc_scores_2 <- merge(pc_scores, metadata, by = 'sample')
+metadata2 <- metadata %>% rename(sample = Run) %>% select(sample, Tissue, Tissue_overall, Tissue_Type, Organism, BioProject)
+pc_scores_2 <- merge(pc_scores, metadata2, by = 'sample')
 
 
 colnames(pc_scores_2)
 # Print pca
 pc_scores_2 %>% 
   # create the plot
-  ggplot(aes(x = PC1, y = PC4, color=Stage)) +
+  ggplot(aes(x = PC3, y = PC5, color=Organism)) +
   geom_point()
 
 #autoplot(pca, data = metadata, colour = 'avgLength')
@@ -214,3 +215,4 @@ View(metadata)
 write.csv(metadata, 'metadata.csv')
 
 autoplot(pca, data = metadata, colour = 'Stage', loadings = TRUE)
+
