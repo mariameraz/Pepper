@@ -1,3 +1,5 @@
+## This scripts was created to clean the metadata table obtained from NCBI
+
 # Load libraries
 library(tidyverse)
 library(dplyr)
