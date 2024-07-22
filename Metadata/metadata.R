@@ -15,12 +15,12 @@ columns_to_select <- columns_to_select$x
 metadata <- data.frame(matrix(ncol = length(columns_to_select), nrow = 0))
 colnames(metadata) <- columns_to_select
 
-metadata.list <- list.files('/Users/alejandra/pepper_counts/metadata/', pattern = 'PR')
+metadata.list <- list.files('/Users/alejandra/pepper_counts/metadata/Projects/', pattern = '.csv')
 length(metadata.list) # 111 projects
-
+metadata.list
 coln <- list()
 for (i in metadata.list) {
-  temp <- read.csv(paste('/Users/alejandra/pepper_counts/metadata/', i, sep = ''), header = TRUE, fill = TRUE)
+  temp <- read.csv(paste('/Users/alejandra/pepper_counts/metadata/Projects/', i, sep = ''), header = TRUE, fill = TRUE)
   
   # Print the first few rows of the temporary data frame
   coln[[i]] <- colnames(temp)
@@ -47,6 +47,10 @@ for (i in metadata.list) {
   metadata <- rbind(metadata, temp)
 }
 
+
+# Delete duplicated samples
+duplicated(metadata$Run) %>% table()
+metadata <- metadata[!(duplicated(metadata$Run)),]
 dim(metadata) #2413 x 147
 
 # Back up 
@@ -67,8 +71,27 @@ metadata$create_date <- gsub('(^.*)-.*-.*', '\\1', metadata$create_date)
 
 # Clean Organism column:
 metadata <- metadata %>% filter(grepl('Capsicum', Organism))
-metadata <- read.csv('pepper_counts/metadata/metadata_clean.csv')
+
+
+# Eliminar proyectos que no nos sirven:
+metadata <- metadata %>% 
+                  filter(!BioProject %in% c('PRJEB26324', 
+                                            'PRJNA704710', 
+                                            'PRJNA235215', 
+                                            'PRJNA509740',
+                                            'PRJNA641558',
+                                            'PRJNA635538'))
+
+# Keeping only samples that are in the count matrix
+counts <- read.table(file = '/Users/alejandra/pepper_counts/counts/counts_matrix.txt')
+
+# Obtener los nombres de las columnas que no están en metadata$Run
+setdiff(colnames(counts), metadata$Run)
+
+# Filtering samples in metadata that are in the count matrix
+metadata <- metadata %>% filter(Run %in% colnames(counts))
 dim(metadata)
+
 #EXPLORE THE DATA
 metadata$Assay.Type %>% table
 metadata$Platform %>% table(exclude = F) # Not all is illumina
@@ -77,6 +100,9 @@ metadata$Organism %>% table(exclude=F)
 metadata$LibraryLayout %>% table(exclude = F)
 metadata$LibrarySelection %>% table(exclude = F)
 metadata$Instrument %>% table(exclude = F)
+
+metadata$Instrument <- gsub('^HiSeq X Ten$', 'Illumina HiSeq X Ten', metadata$Instrument)
+
 metadata$Center.Name %>% table(exclude = F)
 metadata$Sample_name %>% table(exclude = F) # Esta columna esta extrana
 metadata$tissue_type %>% table(exclude = F)
@@ -84,7 +110,6 @@ metadata$Cultivar %>% table(exclude = F)
 metadata$variety %>% table(exclude = F)
 metadata$replicate %>% table(exclude = F)
 metadata$sample_type %>% table(exclude = F)
-metadata$Time %>% table(exclude = F)
 metadata$tissue %>% table(exclude = F)
 metadata$geo_loc_name_country %>% table(exclude = F)
 metadata$Ecotype %>% table(exclude = F)
@@ -93,12 +118,44 @@ metadata$Sample.Name %>% table(exclude = F)
 (metadata$Bytes %>% as.numeric %>% na.omit() %>% sum())
 metadata$Bytes %>% is.na() %>% table()
 metadata$Bases %>% as.numeric %>% na.omit() %>% sum()
+metadata$Bases %>% is.na() %>% table()
 metadata$dev_stage %>% table(exclude = F)
 metadata$isolate %>% table(exclude = F)
 summary(metadata$AvgSpotLen %>% na.exclude()) 
 metadata$Age %>% table(exclude = F)
 metadata$Collection_Date %>% table(exclude = F) 
+metadata$Consent %>% table(exclude = F)
+metadata$LibrarySource %>% table(exclude = F)
+metadata$create_date %>% table(exclude = F)
+metadata$Host_disease %>% table(exclude = F) 
 
+metadata <- metadata %>% select(-c(SAMPLE, 
+                       sample_description,
+                       sample_disease_status,
+                       sample_health_state,
+                       Experimental_Factor._infect..exp.,
+                       ENA.FIRST.PUBLIC..run.,
+                       ENA.LAST.UPDATE..run.,
+                       ENA_last_update,
+                       ENA.LAST.UPDATE..run.,
+                       ena_first_public, Extension_Project_of_GeneChip,
+                       Diet, Biological_Replicate, Barcode, cell_type,
+                       Host_disease,
+                       host_infra_specific_name,
+                       host_sex,
+                       host_taxid,
+                       Host_Diet,
+                       Replica,
+                       collected_time_after_inoculation,
+                       altitude, Aliquote, BREED, source_material_id,
+                       samp_store_temp,
+                       samp_mat_process, samp_collect_device,
+                       Consent,
+                       time, disease_stage, DATASTORE.provider,
+                       DATASTORE.region, SRA.Study, version,
+                       GEO_Accession..exp., geographic_location_.country_and.or_sea., 
+                       geographic_location_.latitude.,
+                       geographic_location_.longitude.))
 
 
 metadata <- metadata %>% 
@@ -136,10 +193,7 @@ metadata <- metadata %>%
 
 
 metadata$Organism %>% table(exclude = F) 
-metadata$geo_region %>% table(exclude = F)
 
-metadata <- metadata %>% 
-  separate(geo_loc_name, into = c("geo_country", "geo_region"), sep = ":", fill = "right", extra = "merge")
 
 metadata$Tissue <- metadata$tissue
 metadata$Tissue <- stringr::str_to_title(metadata$Tissue)
@@ -187,7 +241,6 @@ metadata %>% filter(Tissue %in% 'Leaf\\, Stem\\, Root\\, Flower\\, Immature Frui
 
 
 metadata$Collection_Date %>% table(exclude = F) # Some samples were collected in 2013 
-metadata %>% filter(Organism %in% 'Capsicum cardenasii') %>% View()
 
 
 
@@ -195,10 +248,13 @@ metadata %>% filter(Organism %in% 'Capsicum cardenasii') %>% View()
 write.csv(metadata, '/Users/alejandra/pepper_counts/metadata/metadata_clean.csv')
 dim(metadata) #2214 muestras
 
-## Get the Ids of the samples that we need to process
-samples <- read.csv('muestras_descargadas.csv') %>% select('.') %>% setNames('Run')
-metadata$Run %in% samples$Run %>% table
-new_samples <- metadata %>% filter(!(Run %in% samples$Run)) %>% select(Run) 
 
-write.csv(new_samples,'/Users/alejandra/pepper_counts/metadata/SRA_por_bajar.csv', 
-          row.names = F, quote = F,)
+
+
+## Get the Ids of the samples that we need to process
+# samples <- read.csv('muestras_descargadas.csv') %>% select('.') %>% setNames('Run')
+# metadata$Run %in% samples$Run %>% table
+# new_samples <- metadata %>% filter(!(Run %in% samples$Run)) %>% select(Run) 
+# 
+# write.csv(new_samples,'/Users/alejandra/pepper_counts/metadata/SRA_por_bajar.csv', 
+#           row.names = F, quote = F,)
